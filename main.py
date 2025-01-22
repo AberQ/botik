@@ -5,12 +5,20 @@ from models import *
 from pydantic import BaseModel
 import httpx
 from sqlalchemy.future import *
+import asyncio
+from apscheduler.schedulers.background import *
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+BASE_URL = "http://localhost:8000"
 app = FastAPI()
 
 # URL внешнего API
 EXTERNAL_API_URL = "https://card.wb.ru/cards/v1/detail"
 
+
+
+scheduler = AsyncIOScheduler()
 # Модель для валидации данных из запроса
 class ProductRequest(BaseModel):
     artikul: int
@@ -144,3 +152,42 @@ async def subscribe_to_product(artikul: int, db: AsyncSession = Depends(get_db))
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Произошла ошибка: {str(e)}")
+    
+async def update_product_details():
+    async with SessionLocal() as db:
+        # Получаем все артикула товаров, на которые есть подписки
+        result = await db.execute(select(Subscription.product_artikul).filter(Subscription.active == True))
+        artikuls = result.scalars().all()
+
+        for artikul in artikuls:
+            try:
+                # Формируем URL для запроса
+                url = f"{BASE_URL}/api/v1/products/"
+
+                # Делаем запрос к эндпоинту FastAPI
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(url, json={"artikul": artikul})
+
+                if response.status_code == 200:
+                    print(f"Информация о товаре с артикулом {artikul} успешно обновлена.")
+                else:
+                    print(f"Ошибка при обновлении товара с артикулом {artikul}: {response.status_code}")
+            except httpx.RequestError as e:
+                print(f"Ошибка при запросе к эндпоинту для артикул {artikul}: {e}")
+            except Exception as e:
+                print(f"Ошибка при обновлении товара с артикулом {artikul}: {e}")
+
+# Запуск планировщика
+def start_scheduler():
+    scheduler.add_job(update_product_details, 'interval', seconds=60)
+    scheduler.start()
+
+@app.on_event("startup")
+async def on_startup():
+    # Запускаем планировщик при старте приложения
+    start_scheduler()
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    # Останавливаем планировщик при завершении работы приложения
+    scheduler.shutdown()
