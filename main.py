@@ -161,25 +161,50 @@ async def update_product_details():
 
         for artikul in artikuls:
             try:
-                # Формируем URL для запроса
-                url = f"{BASE_URL}/api/v1/products/"
+                # Получаем товар из базы данных
+                product_query = await db.execute(select(Product).filter(Product.artikul == artikul))
+                product = product_query.scalar()
 
-                # Делаем запрос к эндпоинту FastAPI
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(url, json={"artikul": artikul})
+                if product:
+                    # Получаем информацию о товаре с помощью эндпоинта
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(
+                            "http://127.0.0.1:8000/api/v1/products/",  # URL вашего эндпоинта
+                            json={"artikul": product.artikul}
+                        )
 
-                if response.status_code == 200:
-                    print(f"Информация о товаре с артикулом {artikul} успешно обновлена.")
+                    if response.status_code == 200:
+                        # Парсим ответ, например, если возвращаемые данные есть
+                        product_details = response.json()
+                        new_name = product_details.get("name", product.name)
+                        new_price = product_details.get("sale_price", product.sale_price)
+                        
+                        # Проверяем изменения в товаре
+                        updated = False
+                        
+                        if product.name != new_name:
+                            product.name = new_name
+                            updated = True
+                        
+                        if product.sale_price != new_price:
+                            product.sale_price = new_price
+                            updated = True
+
+                        # Если товар изменен, сохраняем изменения в базе данных
+                        if updated:
+                            await db.commit()  # Сохраняем изменения в базе данных
+                            print(f"Информация о товаре с артикулом {artikul} успешно обновлена.")
+                        else:
+                            print(f"Нет изменений для товара с артикулом {artikul}.")
+                    else:
+                        print(f"Ошибка при запросе данных для товара с артикулом {artikul}. Статус: {response.status_code}")
                 else:
-                    print(f"Ошибка при обновлении товара с артикулом {artikul}: {response.status_code}")
-            except httpx.RequestError as e:
-                print(f"Ошибка при запросе к эндпоинту для артикул {artikul}: {e}")
+                    print(f"Товар с артикулом {artikul} не найден.")
             except Exception as e:
                 print(f"Ошибка при обновлении товара с артикулом {artikul}: {e}")
-
 # Запуск планировщика
 def start_scheduler():
-    scheduler.add_job(update_product_details, 'interval', seconds=60)
+    scheduler.add_job(update_product_details, 'interval', seconds=1800)
     scheduler.start()
 
 @app.on_event("startup")
