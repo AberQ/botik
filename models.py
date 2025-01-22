@@ -1,8 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, BigInteger, Numeric
+from sqlalchemy import *
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-
+from sqlalchemy.orm import *
+from datetime import *
 DATABASE_URL = "postgresql+asyncpg://postgres:123@localhost/botik"
 
 # Базовый класс
@@ -35,3 +35,15 @@ class Product(Base):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_artikul = Column(BigInteger, ForeignKey("products.artikul"), nullable=False)  # Связь по артикулу
+    subscribe_date = Column(DateTime, default=datetime.utcnow)  # Дата подписки
+    active = Column(Boolean, default=True)  # Статус подписки
+
+    # Связь с продуктом
+    product = relationship("Product", backref="subscriptions")
+
