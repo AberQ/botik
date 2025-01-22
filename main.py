@@ -75,6 +75,7 @@ async def get_product_details(request: ProductRequest, db: Session = Depends(get
                         "sale_price": existing_product.sale_price,
                         "rating": existing_product.rating,
                         "quantity": existing_product.quantity,
+                        
 
                 }
 
@@ -98,6 +99,7 @@ async def get_product_details(request: ProductRequest, db: Session = Depends(get
                     "sale_price": product.sale_price,
                     "rating": product.rating,
                     "quantity": product.quantity,
+                    
                 }
 
     except httpx.RequestError as e:

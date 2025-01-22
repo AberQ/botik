@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, create_engine
+from sqlalchemy import *
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -20,3 +20,4 @@ class Product(Base):
     sale_price = Column(Float) 
     rating = Column(Float) 
     quantity = Column(Integer) 
+ 
