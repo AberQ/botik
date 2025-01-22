@@ -1,31 +1,36 @@
 from fastapi import FastAPI, HTTPException, Depends
-from sqlalchemy.orm import Session
-from models import Product, SessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from models import Product
 from pydantic import BaseModel
 import httpx
+from sqlalchemy.future import *
 
 app = FastAPI()
 
 # URL внешнего API
 EXTERNAL_API_URL = "https://card.wb.ru/cards/v1/detail"
 
-
 # Модель для валидации данных из запроса
 class ProductRequest(BaseModel):
     artikul: int
 
+# Создаём асинхронный движок и сессию
+DATABASE_URL = "postgresql+asyncpg://postgres:123@localhost/botik"
+engine = create_async_engine(DATABASE_URL, echo=True)
+SessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
 
 # Получение сессии базы данных
-def get_db():
-    db = SessionLocal()
-    try:
+async def get_db():
+    async with SessionLocal() as db:
         yield db
-    finally:
-        db.close()
-
 
 @app.post("/api/v1/products/")
-async def get_product_details(request: ProductRequest, db: Session = Depends(get_db)):
+async def get_product_details(request: ProductRequest, db: AsyncSession = Depends(get_db)):
     """
     Эндпоинт для получения данных о товаре с Wildberries по артикулу.
     Если продукт уже существует, обновляет его данные.
@@ -58,27 +63,26 @@ async def get_product_details(request: ProductRequest, db: Session = Depends(get
         product_data = response_data["data"]["products"][0]
 
         # Проверяем, есть ли продукт уже в базе данных
-        existing_product = db.query(Product).filter(Product.artikul == request.artikul).first()
+        result = await db.execute(
+            select(Product).filter(Product.artikul == request.artikul)
+        )
+        existing_product = result.scalars().first()
 
         if existing_product:
             # Обновляем данные продукта
             existing_product.name = product_data.get("name")
             existing_product.sale_price = product_data.get("salePriceU") / 100  # Цена со скидкой
-            existing_product.rating = product_data.get("rating")
+            existing_product.rating = product_data.get("reviewRating")
             existing_product.quantity = product_data.get("totalQuantity")
-            db.commit()
-            db.refresh(existing_product)
+            await db.commit()
+            await db.refresh(existing_product)
             return {
-
-                        "artikul": existing_product.artikul,
-                        "name": existing_product.name,
-                        "sale_price": existing_product.sale_price,
-                        "rating": existing_product.rating,
-                        "quantity": existing_product.quantity,
-                        
-
-                }
-
+                "artikul": existing_product.artikul,
+                "name": existing_product.name,
+                "sale_price": existing_product.sale_price,
+                "rating": existing_product.rating,
+                "quantity": existing_product.quantity,
+            }
 
         # Если продукт не найден, создаем новый
         product = Product(
@@ -90,17 +94,16 @@ async def get_product_details(request: ProductRequest, db: Session = Depends(get
         )
 
         db.add(product)
-        db.commit()
-        db.refresh(product)
+        await db.commit()
+        await db.refresh(product)
 
         return {
-                    "artikul": product.artikul,
-                    "name": product.name,
-                    "sale_price": product.sale_price,
-                    "rating": product.rating,
-                    "quantity": product.quantity,
-                    
-                }
+            "artikul": product.artikul,
+            "name": product.name,
+            "sale_price": product.sale_price,
+            "rating": product.rating,
+            "quantity": product.quantity,
+        }
 
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Ошибка подключения к внешнему API: {str(e)}")
