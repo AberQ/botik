@@ -1,14 +1,18 @@
-from sqlalchemy import *
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from datetime import datetime
+
+from sqlalchemy import (BigInteger, Boolean, Column, DateTime, ForeignKey,
+                        Integer, Numeric, String)
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import *
-from datetime import *
+from sqlalchemy.orm import relationship, sessionmaker
+
+# URL подключения к базе данных
 DATABASE_URL = "postgresql+asyncpg://postgres:123@localhost/botik"
 
-# Базовый класс
+# Базовый класс SQLAlchemy
 Base = declarative_base()
 
-# Асинхронный движок
+# Асинхронный движок SQLAlchemy
 engine = create_async_engine(DATABASE_URL, echo=True)
 
 # Асинхронная сессия
@@ -16,26 +20,24 @@ SessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
     autocommit=False,
-    autoflush=False
+    autoflush=False,
 )
-
 
 # Модель Product
 class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
-    artikul = Column(BigInteger, unique=True, index=True, nullable=False)  # Используем BigInteger для больших чисел
+    artikul = Column(BigInteger, unique=True, index=True, nullable=False)  # BigInteger для больших чисел
     name = Column(String, nullable=False)
     sale_price = Column(Numeric(10, 2))  # Для точных значений цены
     rating = Column(Numeric(3, 2))  # Ограничиваем точность для рейтинга
     quantity = Column(Integer)
 
-# Пример создания таблиц (асинхронно)
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Отношения с подписками
+    subscriptions = relationship("Subscription", back_populates="product")
 
+# Модель Subscription
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
@@ -45,5 +47,9 @@ class Subscription(Base):
     active = Column(Boolean, default=True)  # Статус подписки
 
     # Связь с продуктом
-    product = relationship("Product", backref="subscriptions")
+    product = relationship("Product", back_populates="subscriptions")
 
+# Асинхронная инициализация базы данных
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
