@@ -2,26 +2,13 @@ from datetime import datetime
 
 from sqlalchemy import (BigInteger, Boolean, Column, DateTime, ForeignKey,
                         Integer, Numeric, String)
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 
-# URL подключения к базе данных
-DATABASE_URL = "postgresql+asyncpg://postgres:123@localhost/botik"
+from database import Base
 
-# Базовый класс SQLAlchemy
-Base = declarative_base()
 
-# Асинхронный движок SQLAlchemy
-engine = create_async_engine(DATABASE_URL, echo=True)
-
-# Асинхронная сессия
-SessionLocal = sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    autocommit=False,
-    autoflush=False,
-)
 
 # Модель Product
 class Product(Base):
@@ -49,7 +36,4 @@ class Subscription(Base):
     # Связь с продуктом
     product = relationship("Product", back_populates="subscriptions")
 
-# Асинхронная инициализация базы данных
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+
