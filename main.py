@@ -16,7 +16,7 @@ async def update_product_details_wrapper():
 
 def start_scheduler():
     # Добавляем задачу в планировщик с интервалом 30 секунд
-    scheduler.add_job(update_product_details_wrapper, 'interval', seconds=30)
+    scheduler.add_job(update_product_details_wrapper, 'interval', seconds=1800)
     scheduler.start()
 
 @app.on_event("startup")

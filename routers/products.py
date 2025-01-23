@@ -14,7 +14,6 @@ BASE_URL = "http://localhost:8000"
 
 # URL внешнего API
 EXTERNAL_API_URL = "https://card.wb.ru/cards/v1/detail"
-
 @router.post("/api/v1/products/", response_model=ProductResponse)
 async def get_product_details(request: ProductRequest, db: AsyncSession = Depends(get_db)):
     """
@@ -36,15 +35,29 @@ async def get_product_details(request: ProductRequest, db: AsyncSession = Depend
 
         # Проверка ответа
         if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail="Ошибка при запросе к внешнему API")
+            raise HTTPException(
+                status_code=response.status_code, 
+                detail="Ошибка при запросе к внешнему API"
+            )
 
-        # Извлечение данных из ответа
-        response_data = response.json()
+        # Проверяем, есть ли данные о товарах в ответе
+        try:
+            response_data = response.json()
+        except ValueError:
+            raise HTTPException(
+                status_code=500, 
+                detail="Некорректный ответ от внешнего API"
+            )
 
-        if "data" not in response_data or "products" not in response_data["data"]:
-            raise HTTPException(status_code=404, detail="Товар не найден")
+        # Проверка структуры данных в ответе
+        products = response_data.get("data", {}).get("products", [])
+        if not products:
+            raise HTTPException(
+                status_code=404, 
+                detail="Товар не найден"
+            )
 
-        product_data = response_data["data"]["products"][0]
+        product_data = products[0]
 
         # Проверяем, есть ли продукт уже в базе данных
         result = await db.execute(
@@ -53,16 +66,15 @@ async def get_product_details(request: ProductRequest, db: AsyncSession = Depend
         existing_product = result.scalars().first()
 
         if existing_product:
-            # Обновляем данные продукта
             existing_product.name = product_data.get("name")
             existing_product.sale_price = product_data.get("salePriceU") / 100
             existing_product.rating = product_data.get("reviewRating")
             existing_product.quantity = product_data.get("totalQuantity")
             await db.commit()
             await db.refresh(existing_product)
-            return existing_product  # Переход от словаря к модели Pydantic
+            return existing_product
 
-        # Если продукт не найден, создаем новый
+        # Если продукта нет в базе данных, создаем новый
         product = Product(
             artikul=product_data.get("id"),
             name=product_data.get("name"),
@@ -75,12 +87,21 @@ async def get_product_details(request: ProductRequest, db: AsyncSession = Depend
         await db.commit()
         await db.refresh(product)
 
-        return product  # Возвращаем объект модели SQLAlchemy, который затем будет преобразован в Pydantic модель
+        return product
 
+    except HTTPException as e:
+        # Пробрасываем HTTPException, чтобы сохранить код и сообщение
+        raise e
     except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка подключения к внешнему API: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Ошибка подключения к внешнему API: {str(e)}"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Произошла ошибка: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Произошла ошибка: {str(e)}"
+        )
     
 
     
